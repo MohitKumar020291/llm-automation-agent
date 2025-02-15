@@ -1,6 +1,7 @@
 FROM python:3.10-slim
 
 ENV PYTHONUNBUFFERED=1
+ENV USER_EMAIL="23f1000561@ds.study.iitm.ac.in"
 
 RUN apt-get update && apt-get install -y \
     git \

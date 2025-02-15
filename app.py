@@ -112,8 +112,8 @@ def task_A1():
     except ImportError:
         subprocess.check_call(["pip", "install", "uv"])
     
-    # user_email = os.environ.get("USER_EMAIL")
-    user_email = os.getenv("USER_EMAIL", "default_email@example.com")
+    user_email = os.environ.get("USER_EMAIL")
+    # user_email = os.getenv("USER_EMAIL", "default_email@example.com")
     if not user_email:
         raise BadRequest("USER_EMAIL environment variable not set.")
 
