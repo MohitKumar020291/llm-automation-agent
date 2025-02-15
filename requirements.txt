@@ -1,0 +1,7 @@
+Flask==2.2.5
+requests==2.31.0
+beautifulsoup4==4.12.2
+scikit-learn==1.2.2
+markdown==3.4.4
+Pillow==9.5.0
+faker
