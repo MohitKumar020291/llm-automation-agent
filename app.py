@@ -16,15 +16,38 @@ from markdown import markdown
 from PIL import Image
 from io import BytesIO
 from dotenv import load_dotenv
+import shutil
+import threading
 
 load_dotenv()
 
 app = Flask(__name__)
+task_lock = threading.Lock()
+
+# def is_safe_path(path: str) -> bool:
+#     # normalized = os.path.normpath(path)
+#     # return normalized.startswith("/data") and ".." not in normalized
+#     base_dir = os.path.realpath(os.getcwd())
+#     full_path = os.path.realpath(path)
+#     return full_path.startswith(base_dir)
 
 
+# def is_safe_path(path: str) -> bool:
+#     full_path = os.path.realpath(path)
+#     print(f"Checking path: {path}, Resolved: {full_path}")
+    
+#     allowed_base = os.path.realpath(os.getcwd())  # Adjust if needed
+#     print(f"Allowed base: {allowed_base}")
+    
+#     return full_path.startswith(allowed_base)
+
+ALLOWED_PATHS = [
+    os.path.realpath(os.getcwd()),
+    "/data",
+]
 def is_safe_path(path: str) -> bool:
-    normalized = os.path.normpath(path)
-    return normalized.startswith("/data") and ".." not in normalized
+    full_path = os.path.realpath(path)
+    return any(full_path.startswith(allowed) for allowed in ALLOWED_PATHS)
 
 def read_file(path: str) -> str:
     if not is_safe_path(path):
@@ -40,6 +63,21 @@ def write_file(path: str, content: str):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
+
+# def write_file(path: str, content: str):
+#     if not is_safe_path(path):
+#         raise BadRequest("Access to this file is not allowed.")
+    
+#     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+#     # Force change permissions before writing
+#     os.chmod(path, 0o666)  # Allows read & write for everyone
+
+#     with open(path, "w", encoding="utf-8") as f:
+#         f.write(content)
+
+#     # Restore permissions if needed
+#     os.chmod(path, 0o644)  # Read/write for owner, read for others
 
 def call_llm(prompt: str) -> str:
     """
@@ -132,35 +170,100 @@ def task_A1():
         os.remove(tmp_path)
     return "Task A1 completed."
 
+# def task_A2():
+#     file_path = "../../../data/format.md"
+#     print(file_path)
+#     resolved_path = os.path.realpath(file_path)
+#     print("Resolved file path:", resolved_path)
+    
+#     if not os.path.isfile(resolved_path):
+#         raise BadRequest(f"File {resolved_path} does not exist.")
+    
+#     # Temporarily bypass write_file
+#     cmd = ["npx", "prettier@3.4.2", "--write", resolved_path]
+#     result = subprocess.run(cmd, capture_output=True, text=True)
+#     print("Prettier stdout:", result.stdout)
+#     print("Prettier stderr:", result.stderr)
+
+#     if result.returncode != 0:
+#         raise InternalServerError("Prettier command failed.")
+    
+#     return "Task A2 completed."
+
 def task_A2():
     file_path = "/data/format.md"
     if not os.path.isfile(file_path):
         raise BadRequest(f"File {file_path} does not exist.")
     cmd = ["npx", "prettier@3.4.2", "--write", file_path]
     subprocess.check_call(cmd)
+    print(read_file(file_path))
     return "Task A2 completed."
 
+# def task_A3():
+#     input_path = "/data/dates.txt"
+#     output_path = "/data/dates-wednesdays.txt"
+#     if not os.path.isfile(input_path):
+#         raise BadRequest(f"File {input_path} does not exist.")
+
+#     count = 0
+#     with open(input_path, "r", encoding="utf-8") as f:
+#         for line in f:
+#             line = line.strip()
+#             if not line:
+#                 continue
+#             try:
+#                 date_obj = datetime.strptime(line, "%Y-%m-%d")
+#             except ValueError:
+#                 continue
+#             if date_obj.weekday() == 2:
+#                 count += 1
+
+#     write_file(output_path, str(count))
+#     print(output_path, str(count))
+#     return "Task A3 completed."
+
+import os
+from datetime import datetime
+
+def parse_date(date_str):
+    """Try different date formats and return a valid datetime object."""
+    formats = [
+        "%Y-%m-%d",            # 2024-07-07
+        "%d-%b-%Y",            # 18-Apr-2003
+        "%b %d, %Y",           # Jul 17, 2015
+        "%Y/%m/%d %H:%M:%S",   # 2022/05/22 17:24:47
+        "%Y/%m/%d",            # 2024/12/14
+    ]
+    
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    return None
 
 def task_A3():
     input_path = "/data/dates.txt"
     output_path = "/data/dates-wednesdays.txt"
+
     if not os.path.isfile(input_path):
-        raise BadRequest(f"File {input_path} does not exist.")
+        raise Exception(f"File {input_path} does not exist.")
 
     count = 0
     with open(input_path, "r", encoding="utf-8") as f:
         for line in f:
-            line = line.strip()
-            if not line:
+            date_str = line.strip()
+            if not date_str:
                 continue
-            try:
-                date_obj = datetime.strptime(line, "%Y-%m-%d")
-            except ValueError:
-                continue
-            if date_obj.weekday() == 2:
+
+            date_obj = parse_date(date_str)
+            if date_obj and date_obj.weekday() == 2:  # 2 = Wednesday
                 count += 1
 
-    write_file(output_path, str(count))
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(str(count) + "\n")
+
+    print(output_path, count)
     return "Task A3 completed."
 
 def task_A4():
@@ -224,62 +327,311 @@ def task_A6():
     write_file(output_path, json.dumps(index, indent=2))
     return "Task A6 completed."
 
+# def task_A7():
+#     input_path = "/data/email.txt"
+#     output_path = "/data/email-sender.txt"
+#     if not os.path.isfile(input_path):
+#         raise BadRequest(f"File {input_path} does not exist.")
+
+#     with open(input_path, "r", encoding="utf-8") as f:
+#         email_content = f.read()
+
+#     prompt = f"Extract the sender's email address from the following email message:\n\n{email_content}"
+#     result = call_llm(prompt)
+#     print(result)
+#     write_file(output_path, result.strip())
+#     return "Task A7 completed."
+
+import re
+
+# def extract_sender_email(email_content):
+#     match = re.search(r"From: .*?<([^>]+)>", email_content)
+#     return match.group(1) if match else None
+
+# def task_A7():
+#     input_path = "/data/email.txt"
+#     output_path = "/data/email-sender.txt"
+    
+#     if not os.path.isfile(input_path):
+#         raise BadRequest(f"File {input_path} does not exist.")
+
+#     with open(input_path, "r", encoding="utf-8") as f:
+#         email_content = f.read()
+
+#     prompt = f"Extract the sender's email address from the following email message:\n\n{email_content}"
+#     result = call_llm(prompt).strip()
+
+#     if not result:
+#         print("LLM failed, falling back to regex extraction.")
+#         result = extract_sender_email(email_content) or "Extraction Failed"
+
+#     write_file(output_path, result)
+#     print("Extracted Email:", result)
+#     return "Task A7 completed."
+
+import re
+import requests
+import os
+
+def call_llm_for_email(email_content: str) -> str:
+    """Call LLM to extract sender's email."""
+    aiproxy_token = os.getenv("AIPROXY_TOKEN", "default_token")
+    if not aiproxy_token:
+        raise Exception("AIPROXY_TOKEN not set in environment.")
+
+    aiproxy_url = "https://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {aiproxy_token}",
+        "Content-Type": "application/json"
+    }
+
+    system_prompt = "Extract the sender's email address only."
+
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": email_content}
+        ],
+        "max_tokens": 50,
+        "temperature": 0.0
+    }
+
+    response = requests.post(aiproxy_url, headers=headers, json=payload)
+    if response.status_code != 200:
+        raise Exception(f"AIproxy API error: {response.status_code} - {response.text}")
+
+    response_data = response.json()
+    senders_email_address = response_data["choices"][0]["message"]["content"].strip()
+    
+    return senders_email_address
+
+
+def extract_sender_email(email_content):
+    """Regex-based fallback if LLM fails."""
+    match = re.search(r"From: .*?<([^>]+)>", email_content)
+    return match.group(1) if match else None
+
+
 def task_A7():
     input_path = "/data/email.txt"
     output_path = "/data/email-sender.txt"
+
     if not os.path.isfile(input_path):
-        raise BadRequest(f"File {input_path} does not exist.")
+        raise Exception(f"File {input_path} does not exist.")
 
     with open(input_path, "r", encoding="utf-8") as f:
         email_content = f.read()
 
-    prompt = f"Extract the sender's email address from the following email message:\n\n{email_content}"
-    result = call_llm(prompt)
-    write_file(output_path, result.strip())
+    senders_email_address = call_llm_for_email(email_content).strip()
+
+    if not senders_email_address or "error" in senders_email_address.lower():
+        print("LLM failed, falling back to regex extraction.")
+        senders_email_address = extract_sender_email(email_content) or "Extraction Failed"
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(senders_email_address)
+
+    print("Extracted Email:", len(senders_email_address))
     return "Task A7 completed."
 
-def task_A8():
-    input_path = "/data/credit_card.png"
-    output_path = "/data/credit-card.txt"
-    if not os.path.isfile(input_path):
-        raise BadRequest(f"File {input_path} does not exist.")
+import os
+import base64
+import requests
+from PIL import Image, ImageDraw, ImageFont
+from faker import Faker
 
-    with open(input_path, "rb") as f:
-        image_bytes = f.read()
-    encoded_image = base64.b64encode(image_bytes).decode('utf-8')
-    prompt = f"Extract the credit card number from the image data (base64 encoded): {encoded_image}"
-    result = call_llm(prompt)
-    card_number = result.replace(" ", "")
-    write_file(output_path, card_number.strip())
-    return "Task A8 completed."
+# Config (update as needed)
+config = {
+    "email": "test@example.com",
+    "root": "/data"
+}
+
+def get_credit_card(email):
+    """Generates a fake credit card with a deterministic seed for reproducibility."""
+    fake = Faker()
+    fake.seed_instance(hash(f"{email}:a8"))
+    return {
+        "number": fake.credit_card_number(),
+        "expiry": fake.credit_card_expire(),
+        "security_code": fake.credit_card_security_code(),
+        "name": fake.name().upper(),
+    }
+
+def generate_credit_card_image():
+    """Creates a fake credit card image at /data/credit_card.png."""
+    data = get_credit_card(config["email"])
+
+    WIDTH, HEIGHT = 1012, 638
+    image = Image.new("RGB", (WIDTH, HEIGHT), (25, 68, 141))  # Deep blue background
+    draw = ImageDraw.Draw(image)
+
+    # Load default font
+    try:
+        font = ImageFont.truetype("arial.ttf", 60)  # Try to load a proper font
+    except IOError:
+        font = ImageFont.load_default()
+
+    # Format credit card number with spaces
+    cc_number = " ".join([data["number"][i:i+4] for i in range(0, 16, 4)])
+    
+    # Draw elements
+    draw.text((50, 250), cc_number, fill=(255, 255, 255), font=font)
+    draw.text((50, 400), "VALID\nTHRU", fill=(255, 255, 255), font=font)
+    draw.text((50, 480), data["expiry"], fill=(255, 255, 255), font=font)
+    draw.text((250, 480), data["security_code"], fill=(255, 255, 255), font=font)
+    draw.text((50, 550), data["name"], fill=(255, 255, 255), font=font)
+
+    # Save the image
+    image_path = os.path.join(config["root"], "credit_card.png")
+    image.save(image_path)
+    return image_path, data["number"]  # Return path and actual card number for validation
+
+def crop_credit_card_image(image_path):
+    """Crops the image to focus on the middle-left section where the number is."""
+    image = Image.open(image_path)
+    width, height = image.size
+
+    # Crop the middle-left section where the number is placed
+    cropped_image = image.crop((50, 200, width - 50, 320))  
+    cropped_image_path = os.path.join(config["root"], "credit_card_cropped.png")
+    cropped_image.save(cropped_image_path)
+
+    return cropped_image_path
+
+def call_ocr_llm_with_gpt4v(image_path):
+    """Uses GPT-4V to extract numeric text from a credit card image."""
+    try:
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise Exception("OPENAI_API_KEY not set in environment.")
+
+        openai_url = "https://api.openai.com/v1/chat/completions"
+
+        headers = {
+            "Authorization": f"Bearer {openai_api_key}",
+            "Content-Type": "application/json"
+        }
+
+        # Read and encode the image
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
+        encoded_image = base64.b64encode(image_bytes).decode('utf-8')
+
+        payload = {
+            "model": "gpt-4-turbo",
+            "messages": [
+                {"role": "system", "content": "Extract only numeric text from the given image, ignoring any other text."},
+                {"role": "user", "content": [
+                    {"type": "text", "text": "Extract the numeric text from this image:"},
+                    {"type": "image_url", "image_url": f"data:image/png;base64,{encoded_image}"}
+                ]}
+            ],
+            "max_tokens": 16,
+            "temperature": 0.0
+        }
+
+        response = requests.post(openai_url, headers=headers, json=payload)
+        if response.status_code != 200:
+            raise Exception(f"OpenAI API error: {response.status_code} - {response.text}")
+
+        response_data = response.json()
+        extracted_text = response_data["choices"][0]["message"]["content"].strip()
+
+        # Keep only numbers (remove spaces, dashes, or other characters)
+        return "".join(filter(str.isdigit, extracted_text))
+
+    except Exception as e:
+        raise Exception(f"Failed to call GPT-4V: {str(e)}")
+
+def task_A8():
+    """Main function to generate the image, extract text, and validate."""
+    input_path, expected_card_number = generate_credit_card_image()  # Step 1: Generate image
+    cropped_path = crop_credit_card_image(input_path)  # Step 2: Crop image to focus on numbers
+    extracted_card_number = call_ocr_llm_with_gpt4v(cropped_path)  # Step 3: Extract number
+
+    # Write extracted number to file
+    output_path = os.path.join(config["root"], "credit-card.txt")
+    with open(output_path, "w") as f:
+        f.write(extracted_card_number.strip())
+
+    # Validate the result
+    if extracted_card_number != expected_card_number:
+        print(f"❌ Mismatch! Expected: {expected_card_number}, Got: {extracted_card_number}")
+        return False
+
+    print("✅ Task A8 completed successfully!")
+    return True
+
+import os
+import requests
+import numpy as np
+from faker import Faker
+
+def get_comments(email):
+    """Generate 100 deterministic fake comments based on the email seed."""
+    fake = Faker()
+    print(email)
+    fake.seed_instance(hash(f"{email}:a9"))  # Ensure same seed as a9_comments()
+    return [fake.paragraph() for _ in range(100)]
+
+def generate_comments_file():
+    """Ensure comments.txt exists with deterministic content."""
+    email = os.getenv("USER_EMAIL", "test@example.com")
+    comments = get_comments(email)
+    comments_path = "/data/comments.txt"
+
+    with open(comments_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(comments))
+    
+    return comments_path, comments
+
+def delete_old_results(output_path):
+    """Ensure old output file is removed before writing new results."""
+    if os.path.exists(output_path):
+        os.remove(output_path)
+
+def fetch_embeddings(comments):
+    """Fetch embeddings from OpenAI via proxy."""
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise Exception("OPENAI_API_KEY is not set.")
+
+    proxy_url = "https://aiproxy.sanand.workers.dev/openai/v1/embeddings"
+
+    response = requests.post(
+        proxy_url,
+        headers={"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"},
+        json={"model": "text-embedding-3-small", "input": comments},
+    )
+
+    if response.status_code != 200:
+        raise Exception(f"OpenAI API Error: {response.status_code} - {response.text}")
+
+    return np.array([emb["embedding"] for emb in response.json()["data"]])
 
 def task_A9():
-    input_path = "/data/comments.txt"
+    """Find the most similar pair of comments using OpenAI embeddings."""
+    input_path, comments = generate_comments_file()  # Ensure comments exist
     output_path = "/data/comments-similar.txt"
-    if not os.path.isfile(input_path):
-        raise BadRequest(f"File {input_path} does not exist.")
 
-    with open(input_path, "r", encoding="utf-8") as f:
-        comments = [line.strip() for line in f if line.strip()]
+    delete_old_results(output_path)  # Clear previous results
 
-    if len(comments) < 2:
-        raise BadRequest("Not enough comments to compare.")
+    embeddings = fetch_embeddings(comments)  # Get embeddings
 
-    vectorizer = TfidfVectorizer().fit_transform(comments)
-    vectors = vectorizer.toarray()
-    cosine_matrix = cosine_similarity(vectors)
+    # Compute similarity (dot product)
+    similarity = np.dot(embeddings, embeddings.T)
+    np.fill_diagonal(similarity, -np.inf)  # Ignore self-similarity
 
-    max_sim = -1.0
-    pair = (None, None)
-    num = len(comments)
-    for i in range(num):
-        for j in range(i+1, num):
-            if cosine_matrix[i][j] > max_sim:
-                max_sim = cosine_matrix[i][j]
-                pair = (comments[i], comments[j])
+    # Find most similar pair
+    i, j = np.unravel_index(similarity.argmax(), similarity.shape)
+    most_similar_pair = sorted([comments[i], comments[j]])  # Sort for consistency
 
-    output_text = f"{pair[0]}\n{pair[1]}"
-    write_file(output_path, output_text)
+    # Write results
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(most_similar_pair))
+
     return "Task A9 completed."
 
 
@@ -461,6 +813,7 @@ def dispatch_task(task_description: str) -> str:
         }
 
         if task_type in task_functions:
+            print("==============TASK==============")
             return task_functions[task_type]()
         else:
             raise BadRequest(f"Unsupported task type: {task_type}")

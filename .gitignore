@@ -1,3 +1,11 @@
 .env
 llm-automation-agent.tar
 venv
+__pycache__/
+abc.md
+data/
+datagen.py
+dates.txt
+evaluate.py
+evaluate.py:Zone.Identifier
+test.py
